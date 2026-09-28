@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, UploadFile, File, Header, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, RedirectResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -7,7 +7,12 @@ from pydantic import BaseModel, Field, ConfigDict
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import Optional
-import os, uuid, logging, requests, json
+import os, uuid, logging, requests, json, io
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+from google_auth_oauthlib.flow import Flow
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request as GoogleRequest
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -23,6 +28,8 @@ STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https
 STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
 storage_key = None
 APP_NAME = "dental-coass-tracker"
+DRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+DRIVE_REDIRECT_URI = os.environ.get("GOOGLE_DRIVE_REDIRECT_URI")
 
 class StatusCheck(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -44,7 +51,7 @@ class AiRequest(BaseModel):
 class PatientUpdate(BaseModel):
     tooth_map: dict
 
-async def current_user(request: Request, authorization: Optional[str] = Header(None)):
+async def current_user(request: Request, authorization: Optional[str] = None):
     token = request.cookies.get("session_token")
     if not token and authorization and authorization.lower().startswith("bearer "):
         token = authorization[7:]
@@ -123,6 +130,63 @@ def init_storage(force=False):
     if not EMERGENT_KEY: raise RuntimeError("Storage requires EMERGENT_LLM_KEY")
     r = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30); r.raise_for_status(); storage_key = r.json()["storage_key"]; return storage_key
 
+def drive_flow():
+    if not os.environ.get("GOOGLE_CLIENT_ID") or not os.environ.get("GOOGLE_CLIENT_SECRET") or not DRIVE_REDIRECT_URI:
+        raise HTTPException(503, "Google Drive OAuth is not configured")
+    return Flow.from_client_config({"web": {"client_id": os.environ["GOOGLE_CLIENT_ID"], "client_secret": os.environ["GOOGLE_CLIENT_SECRET"], "auth_uri": "https://accounts.google.com/o/oauth2/auth", "token_uri": "https://oauth2.googleapis.com/token", "redirect_uris": [DRIVE_REDIRECT_URI]}}, scopes=DRIVE_SCOPES, redirect_uri=DRIVE_REDIRECT_URI)
+
+async def drive_service(user_id: str):
+    doc = await db.drive_credentials.find_one({"user_id": user_id}, {"_id": 0})
+    if not doc: raise HTTPException(400, "Google Drive belum terhubung")
+    creds = Credentials(token=doc.get("access_token"), refresh_token=doc.get("refresh_token"), token_uri=doc.get("token_uri"), client_id=doc.get("client_id"), client_secret=doc.get("client_secret"), scopes=doc.get("scopes"))
+    if creds.expired and creds.refresh_token:
+        creds.refresh(GoogleRequest())
+        await db.drive_credentials.update_one({"user_id": user_id}, {"$set": {"access_token": creds.token, "expiry": creds.expiry.isoformat() if creds.expiry else None, "updated_at": datetime.now(timezone.utc).isoformat()}})
+    return build("drive", "v3", credentials=creds)
+
+async def ensure_drive_folder(service, user_id: str):
+    profile = await db.drive_profiles.find_one({"user_id": user_id}, {"_id": 0})
+    if profile and profile.get("folder_id"): return profile["folder_id"]
+    result = service.files().list(q="name = 'Dental Coass Tracker' and mimeType = 'application/vnd.google-apps.folder' and trashed = false", spaces="drive", fields="files(id,name)").execute()
+    folder_id = result["files"][0]["id"] if result.get("files") else service.files().create(body={"name":"Dental Coass Tracker","mimeType":"application/vnd.google-apps.folder"}, fields="id").execute()["id"]
+    await db.drive_profiles.update_one({"user_id": user_id}, {"$set": {"user_id": user_id, "folder_id": folder_id, "updated_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+    return folder_id
+
+async def sync_file_to_drive(user_id: str, doc: dict, data: bytes):
+    try:
+        service = await drive_service(user_id)
+        folder_id = await ensure_drive_folder(service, user_id)
+        metadata = {"name": doc["original_filename"], "parents": [folder_id], "description": f"Dental Coass Tracker · patient {doc['patient_id']}"}
+        media = MediaIoBaseUpload(io.BytesIO(data), mimetype=doc["content_type"], resumable=False)
+        result = service.files().create(body=metadata, media_body=media, fields="id,webViewLink").execute()
+        await db.files.update_one({"id": doc["id"]}, {"$set": {"drive_file_id": result.get("id"), "drive_synced": True}})
+    except Exception as exc:
+        logger.warning("Drive sync skipped: %s", exc)
+
+@api_router.get("/drive/connect")
+async def connect_drive(request: Request):
+    user = await current_user(request)
+    flow = drive_flow(); state = uuid.uuid4().hex
+    await db.drive_oauth_states.insert_one({"state": state, "user_id": user["user_id"], "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()})
+    authorization_url, _ = flow.authorization_url(access_type="offline", include_granted_scopes="true", prompt="consent", state=state)
+    return {"authorization_url": authorization_url}
+
+@api_router.get("/drive/callback")
+async def drive_callback(code: str = Query(...), state: str = Query(...)):
+    state_doc = await db.drive_oauth_states.find_one({"state": state}, {"_id": 0})
+    if not state_doc: raise HTTPException(400, "OAuth state tidak valid")
+    expires = datetime.fromisoformat(state_doc["expires_at"])
+    if expires.tzinfo is None: expires = expires.replace(tzinfo=timezone.utc)
+    if expires < datetime.now(timezone.utc): raise HTTPException(400, "OAuth state kedaluwarsa")
+    flow = drive_flow(); flow.fetch_token(code=code); creds = flow.credentials
+    await db.drive_credentials.update_one({"user_id": state_doc["user_id"]}, {"$set": {"user_id": state_doc["user_id"], "access_token": creds.token, "refresh_token": creds.refresh_token, "token_uri": creds.token_uri, "client_id": creds.client_id, "client_secret": creds.client_secret, "scopes": creds.scopes or DRIVE_SCOPES, "expiry": creds.expiry.isoformat() if creds.expiry else None, "updated_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+    await db.drive_oauth_states.delete_one({"state": state})
+    return RedirectResponse(url=f"{os.environ.get('FRONTEND_URL', 'https://odonto-coass-hub.preview.emergentagent.com')}/settings?drive_connected=true")
+
+@api_router.get("/drive/status")
+async def drive_status(request: Request):
+    user = await current_user(request); connected = bool(await db.drive_credentials.find_one({"user_id": user["user_id"]}, {"_id": 0, "user_id": 1})); return {"connected": connected, "folder_name": "Dental Coass Tracker"}
+
 @api_router.post("/files/upload")
 async def upload_file(request: Request, file: UploadFile = File(...), patient_id: str = "general"):
     user = await current_user(request)
@@ -135,6 +199,7 @@ async def upload_file(request: Request, file: UploadFile = File(...), patient_id
     result.raise_for_status(); stored = result.json()
     doc = {"id": str(uuid.uuid4()), "user_id": user["user_id"], "patient_id": patient_id, "storage_path": stored["path"], "original_filename": file.filename, "content_type": file.content_type, "size": stored["size"], "is_deleted": False, "created_at": datetime.now(timezone.utc).isoformat()}
     await db.files.insert_one(doc)
+    await sync_file_to_drive(user["user_id"], doc, data)
     return {k:v for k,v in doc.items() if k != "_id"}
 
 @api_router.get("/files/{file_id}/download")
@@ -169,7 +234,7 @@ async def inventory(request: Request):
 
 @api_router.get("/settings/integrations")
 async def integrations(request: Request):
-    await current_user(request); return {"google_drive": False, "storage": bool(EMERGENT_KEY), "ai": bool(EMERGENT_KEY)}
+    user = await current_user(request); return {"google_drive": bool(await db.drive_credentials.find_one({"user_id": user["user_id"]}, {"_id": 0, "user_id": 1})), "storage": bool(EMERGENT_KEY), "ai": bool(EMERGENT_KEY)}
 
 app.include_router(api_router)
 app.add_middleware(CORSMiddleware, allow_credentials=True, allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","), allow_methods=["*"], allow_headers=["*"])

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="5" skipped="0" tests="7" time="1.168" timestamp="2026-09-28T01:39:15.971584+00:00" hostname="agent-env-6a6733ce-4f56-46dd-b58e-a1077a72c89c"><testcase classname="tests.test_public_and_auth_gates" name="test_api_root_is_available" time="0.149" /><testcase classname="tests.test_public_and_auth_gates" name="test_auth_me_rejects_unauthenticated_request" time="0.081" /><testcase classname="tests.test_public_and_auth_gates" name="test_protected_endpoints_reject_unauthenticated_request[dashboard]" time="0.081"><failure message="assert 500 == 401&#10; +  where 500 = &lt;Response [500]&gt;.status_code">backend/tests/test_public_and_auth_gates.py:35: in test_protected_endpoints_reject_unauthenticated_request
+    assert response.status_code == 401
+E   assert 500 == 401
+E    +  where 500 = &lt;Response [500]&gt;.status_code</failure></testcase><testcase classname="tests.test_public_and_auth_gates" name="test_protected_endpoints_reject_unauthenticated_request[patients]" time="0.067"><failure message="assert 500 == 401&#10; +  where 500 = &lt;Response [500]&gt;.status_code">backend/tests/test_public_and_auth_gates.py:35: in test_protected_endpoints_reject_unauthenticated_request
+    assert response.status_code == 401
+E   assert 500 == 401
+E    +  where 500 = &lt;Response [500]&gt;.status_code</failure></testcase><testcase classname="tests.test_public_and_auth_gates" name="test_protected_endpoints_reject_unauthenticated_request[calendar]" time="0.082"><failure message="assert 500 == 401&#10; +  where 500 = &lt;Response [500]&gt;.status_code">backend/tests/test_public_and_auth_gates.py:35: in test_protected_endpoints_reject_unauthenticated_request
+    assert response.status_code == 401
+E   assert 500 == 401
+E    +  where 500 = &lt;Response [500]&gt;.status_code</failure></testcase><testcase classname="tests.test_public_and_auth_gates" name="test_protected_endpoints_reject_unauthenticated_request[library]" time="0.070"><failure message="assert 500 == 401&#10; +  where 500 = &lt;Response [500]&gt;.status_code">backend/tests/test_public_and_auth_gates.py:35: in test_protected_endpoints_reject_unauthenticated_request
+    assert response.status_code == 401
+E   assert 500 == 401
+E    +  where 500 = &lt;Response [500]&gt;.status_code</failure></testcase><testcase classname="tests.test_public_and_auth_gates" name="test_protected_endpoints_reject_unauthenticated_request[inventory]" time="0.101"><failure message="assert 500 == 401&#10; +  where 500 = &lt;Response [500]&gt;.status_code">backend/tests/test_public_and_auth_gates.py:35: in test_protected_endpoints_reject_unauthenticated_request
+    assert response.status_code == 401
+E   assert 500 == 401
+E    +  where 500 = &lt;Response [500]&gt;.status_code</failure></testcase></testsuite></testsuites>

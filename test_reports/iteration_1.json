@@ -1,0 +1,51 @@
+{
+  "summary": "Tested public API, unauthenticated auth gates, sign-in UI, invalid OAuth callback cleanup, and mobile sign-in layout. Public root and /auth/me behave correctly, but protected feature routes crash with 500 instead of returning 401, blocking authenticated dashboard and module testing.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "/api/dashboard, /api/patients, /api/calendar, /api/library, /api/inventory (and likely other routes calling current_user(request))",
+        "issue": "Unauthenticated requests return 500 Internal Server Error instead of 401. Backend logs show AttributeError: 'Header' object has no attribute 'lower' in current_user because direct callers omit the FastAPI-resolved authorization argument and the Header(None) sentinel is treated as a string.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Authenticated dashboard and feature navigation",
+        "issue": "Could not execute because protected backend endpoints crash before authentication can be established; no real OAuth test credentials are available.",
+        "affected_selectors": ["[data-testid=\"nav-dashboard-button\"]", "[data-testid=\"nav-patients-button\"]", "[data-testid=\"nav-ai-button\"]"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_public_and_auth_gates.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Fix current_user so its authorization parameter is a real Optional[str] value when invoked directly (or pass the resolved authorization explicitly); all protected routes must return 401 without credentials.",
+    "Retest authenticated OAuth exchange, dashboard navigation, odontogram persistence, media upload, AI streaming, and logout after the auth helper fix."
+  ],
+  "critical_code_review_comments": [
+    "The shared authentication dependency is unsafe when called directly: Header(None) is a Param sentinel, not a string. This causes an uncaught AttributeError across protected routes and is a security/error-handling blocker.",
+    "Several frontend API calls (dashboard/patients/AI/upload) do not expose request errors to users; once backend failures occur, the UI can remain blank or throw during stream handling instead of showing an actionable error state."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_public_and_auth_gates.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/iteration_1.json"
+  ],
+  "success_rate": {
+    "backend": "29% (2/7 tests passed)",
+    "frontend": "100% of tested unauthenticated flows (3/3); authenticated flows not executed"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": true,
+  "should_call_test_agent_after_fix": true,
+  "context_for_next_testing_agent": "No credentials are present in /app/memory/test_credentials.md. Public /api/ returns 200 and unauthenticated /api/auth/me returns 401. Invalid session_id callback clears the hash and returns to sign-in. Mobile sign-in at 390x844 has no horizontal overflow. Protected endpoints currently fail with 500 due to current_user Header sentinel bug.",
+  "test_credentials": "Unavailable; /app/memory/test_credentials.md contains no credentials.",
+  "rca of the issue": "FastAPI injects Header(None) only when current_user is used as a dependency-resolved parameter. Feature handlers call current_user(request) directly, so authorization receives the Header object itself. The helper then calls authorization.lower(), raising AttributeError before its intended no-token 401 branch. Pass authorization from each handler or change the helper to read request.headers directly/guard for string values."
+}
