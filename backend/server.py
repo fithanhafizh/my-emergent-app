@@ -163,25 +163,162 @@ async def logout(request: Request, response: Response):
     response.delete_cookie("session_token", path="/")
     return {"ok": True}
 
-# ---------------- Dashboard ----------------
+# ---------------- Dashboard & Requirements ----------------
 DEPARTMENTS = [("Bedah Mulut", 20), ("Konservasi Gigi", 25), ("Periodonsia", 18),
                ("Prostodonsia", 15), ("Ortodonsia", 12), ("Pedodonsia", 20),
                ("Oral Medicine", 18), ("Radiologi", 20)]
+
+DEFAULT_REQUIREMENTS = {
+    "Bedah Mulut": [("Ekstraksi Gigi Anterior", 5), ("Ekstraksi Gigi Posterior", 5),
+                    ("Odontektomi M3", 2), ("Alveolektomi", 1)],
+    "Konservasi Gigi": [("Tumpatan Kelas I", 5), ("Tumpatan Kelas II", 5),
+                        ("Tumpatan Kelas III", 3), ("Tumpatan Kelas V", 2),
+                        ("Perawatan Saluran Akar", 2)],
+    "Periodonsia": [("Scaling & Root Planing", 5), ("Kuretase", 2), ("Splinting", 1)],
+    "Prostodonsia": [("Gigi Tiruan Lepasan Sebagian", 2), ("Gigi Tiruan Cekat / Crown", 2),
+                     ("Denture Reline / Rebase", 1)],
+    "Ortodonsia": [("Analisis Model & Diagnosis", 3), ("Removable Appliance", 2)],
+    "Pedodonsia": [("Pulpotomi", 2), ("Tumpatan Gigi Sulung", 3),
+                   ("Fissure Sealant", 2), ("Space Maintainer", 1)],
+    "Oral Medicine": [("Anamnesis Lesi Mukosa", 5), ("Terapi Ulkus Aftosa", 2)],
+    "Radiologi": [("Interpretasi Periapikal", 5), ("Interpretasi Panoramik", 3)],
+}
+
+class RequirementCreate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    department: str
+    name: str
+    target: int = 1
+    notes: Optional[str] = ""
+
+class RequirementUpdate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    name: Optional[str] = None
+    target: Optional[int] = None
+    done: Optional[int] = None
+    delta: Optional[int] = None
+    notes: Optional[str] = None
+
+
+async def seed_requirements_if_empty(uid: str):
+    if await db.requirements.count_documents({"owner_id": uid}) > 0:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    docs = []
+    for dept, items in DEFAULT_REQUIREMENTS.items():
+        for name, target in items:
+            docs.append({
+                "req_id": "req_" + uuid.uuid4().hex[:12],
+                "owner_id": uid, "department": dept, "name": name,
+                "target": target, "done": 0, "notes": "",
+                "created_at": now
+            })
+    if docs:
+        await db.requirements.insert_many(docs)
+
+
+@api_router.get("/requirements")
+async def list_requirements(request: Request, department: Optional[str] = None):
+    user = await current_user(request)
+    uid = user["user_id"]
+    await seed_requirements_if_empty(uid)
+    q = {"owner_id": uid}
+    if department:
+        q["department"] = department
+    items = await db.requirements.find(q, {"_id": 0}).sort("created_at", 1).to_list(500)
+    return items
+
+
+@api_router.post("/requirements")
+async def create_requirement(payload: RequirementCreate, request: Request):
+    user = await current_user(request)
+    doc = {
+        "req_id": "req_" + uuid.uuid4().hex[:12],
+        "owner_id": user["user_id"],
+        "department": payload.department,
+        "name": payload.name.strip(),
+        "target": max(1, int(payload.target or 1)),
+        "done": 0, "notes": payload.notes or "",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.requirements.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.patch("/requirements/{req_id}")
+async def update_requirement(req_id: str, payload: RequirementUpdate, request: Request):
+    user = await current_user(request)
+    q = {"req_id": req_id, "owner_id": user["user_id"]}
+    current = await db.requirements.find_one(q)
+    if not current:
+        raise HTTPException(404, "Requirement tidak ditemukan")
+    updates: Dict[str, Any] = {}
+    if payload.name is not None: updates["name"] = payload.name.strip()
+    if payload.target is not None: updates["target"] = max(1, int(payload.target))
+    if payload.notes is not None: updates["notes"] = payload.notes
+    if payload.done is not None:
+        updates["done"] = max(0, int(payload.done))
+    elif payload.delta is not None:
+        updates["done"] = max(0, int(current.get("done", 0)) + int(payload.delta))
+    if updates:
+        await db.requirements.update_one(q, {"$set": updates})
+    doc = await db.requirements.find_one(q, {"_id": 0})
+    return doc
+
+
+@api_router.delete("/requirements/{req_id}")
+async def delete_requirement(req_id: str, request: Request):
+    user = await current_user(request)
+    r = await db.requirements.delete_one({"req_id": req_id, "owner_id": user["user_id"]})
+    if r.deleted_count == 0:
+        raise HTTPException(404, "Requirement tidak ditemukan")
+    return {"ok": True}
+
+
+@api_router.get("/requirements/{req_id}/patients")
+async def requirement_patients(req_id: str, request: Request):
+    user = await current_user(request)
+    uid = user["user_id"]
+    req = await db.requirements.find_one({"req_id": req_id, "owner_id": uid}, {"_id": 0})
+    if not req:
+        raise HTTPException(404, "Requirement tidak ditemukan")
+    # Cross-link: patients in same department whose diagnosis matches requirement name (substring)
+    kw = (req.get("name") or "").lower().split()
+    patients = await db.patients.find(
+        {"owner_id": uid, "department": req["department"]}, {"_id": 0}
+    ).to_list(500)
+    matches = []
+    for p in patients:
+        hay = (p.get("diagnosis") or "").lower() + " " + (p.get("notes") or "").lower()
+        if any(k in hay for k in kw if len(k) > 3):
+            matches.append(p)
+    return {"requirement": req, "patients": matches}
+
 
 @api_router.get("/dashboard")
 async def dashboard(request: Request):
     user = await current_user(request)
     uid = user["user_id"]
+    await seed_requirements_if_empty(uid)
+    reqs = await db.requirements.find({"owner_id": uid}, {"_id": 0}).to_list(500)
     patients = await db.patients.find({"owner_id": uid}, {"_id": 0}).to_list(500)
-    total_by_dept = {}
-    for p in patients:
-        dept = p.get("department") or "Lainnya"
-        total_by_dept[dept] = total_by_dept.get(dept, 0) + 1
+    by_dept: Dict[str, Dict[str, int]] = {}
+    for r in reqs:
+        dept = r.get("department") or "Lainnya"
+        agg = by_dept.setdefault(dept, {"done": 0, "target": 0, "items": 0})
+        agg["done"] += int(r.get("done", 0))
+        agg["target"] += int(r.get("target", 0))
+        agg["items"] += 1
     departments = []
-    for name, target in DEPARTMENTS:
-        done = total_by_dept.get(name, 0)
-        status = "Lulus" if done >= target else ("On Progress" if done > 0 else "Belum Dimulai")
-        departments.append({"name": name, "done": done, "target": target, "status": status})
+    for name, _ in DEPARTMENTS:
+        agg = by_dept.get(name, {"done": 0, "target": 0, "items": 0})
+        target = agg["target"] or 0
+        done = min(agg["done"], target) if target else agg["done"]
+        pct = round((done / target) * 100) if target else 0
+        status = "Lulus" if target and done >= target else ("On Progress" if done > 0 else "Belum Dimulai")
+        departments.append({"name": name, "done": done, "target": target,
+                            "items": agg["items"], "pct": pct, "status": status})
     events = await db.calendar_events.find({"owner_id": uid, "date": datetime.now().strftime("%Y-%m-%d")},
                                            {"_id": 0}).to_list(50)
     events.sort(key=lambda e: e.get("time") or "")
