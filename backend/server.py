@@ -138,7 +138,7 @@ def drive_flow():
 async def drive_service(user_id: str):
     doc = await db.drive_credentials.find_one({"user_id": user_id}, {"_id": 0})
     if not doc: raise HTTPException(400, "Google Drive belum terhubung")
-    creds = Credentials(token=doc.get("access_token"), refresh_token=doc.get("refresh_token"), token_uri=doc.get("token_uri"), client_id=doc.get("client_id"), client_secret=doc.get("client_secret"), scopes=doc.get("scopes"))
+    creds = Credentials(token=doc.get("access_token"), refresh_token=doc.get("refresh_token"), token_uri=doc.get("token_uri"), client_id=os.environ["GOOGLE_CLIENT_ID"], client_secret=os.environ["GOOGLE_CLIENT_SECRET"], scopes=doc.get("scopes"))
     if creds.expired and creds.refresh_token:
         creds.refresh(GoogleRequest())
         await db.drive_credentials.update_one({"user_id": user_id}, {"$set": {"access_token": creds.token, "expiry": creds.expiry.isoformat() if creds.expiry else None, "updated_at": datetime.now(timezone.utc).isoformat()}})
@@ -179,7 +179,7 @@ async def drive_callback(code: str = Query(...), state: str = Query(...)):
     if expires.tzinfo is None: expires = expires.replace(tzinfo=timezone.utc)
     if expires < datetime.now(timezone.utc): raise HTTPException(400, "OAuth state kedaluwarsa")
     flow = drive_flow(); flow.fetch_token(code=code); creds = flow.credentials
-    await db.drive_credentials.update_one({"user_id": state_doc["user_id"]}, {"$set": {"user_id": state_doc["user_id"], "access_token": creds.token, "refresh_token": creds.refresh_token, "token_uri": creds.token_uri, "client_id": creds.client_id, "client_secret": creds.client_secret, "scopes": creds.scopes or DRIVE_SCOPES, "expiry": creds.expiry.isoformat() if creds.expiry else None, "updated_at": datetime.now(timezone.utc).isoformat()}}, upsert=True)
+    await db.drive_credentials.update_one({"user_id": state_doc["user_id"]}, {"$set": {"user_id": state_doc["user_id"], "access_token": creds.token, "refresh_token": creds.refresh_token, "token_uri": creds.token_uri, "scopes": creds.scopes or DRIVE_SCOPES, "expiry": creds.expiry.isoformat() if creds.expiry else None, "updated_at": datetime.now(timezone.utc).isoformat()}, "$unset": {"client_secret": "", "client_id": ""}}, upsert=True)
     await db.drive_oauth_states.delete_one({"state": state})
     return RedirectResponse(url=f"{os.environ.get('FRONTEND_URL', 'https://odonto-coass-hub.preview.emergentagent.com')}/settings?drive_connected=true")
 

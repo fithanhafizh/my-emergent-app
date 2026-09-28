@@ -1,0 +1,50 @@
+{
+  "summary": "Retested the Drive integration regression: public API and all sampled protected routes behave correctly, the frontend builds, the Google sign-in screen redirects to Emergent/Google, invalid session callbacks recover, and mobile auth has no horizontal overflow. Real Google OAuth callback, authenticated dashboard, Drive authorization, upload, AI streaming, and logout could not be completed without a configured test identity.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/drive/callback",
+        "issue": "Callback persists client_secret in drive_credentials; credentials are not returned by the tested API responses, but plaintext-at-rest storage is a security concern and remains in the PRD backlog."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Authenticated Drive settings and file/AI flows",
+        "issue": "Blocked from end-to-end execution because no Google test identity is available; unauthenticated guards were verified as 401.",
+        "affected_selectors": ["[data-testid=\"connect-google-drive-button\"]", "[data-testid=\"media-upload-input\"]", "[data-testid=\"ai-submit-button\"]", "[data-testid=\"logout-button\"]"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_public_and_auth_gates.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/iteration_2.json"
+  ],
+  "action_items": [
+    "Run a real Google test identity through Emergent login, then connect Drive from Settings and verify callback, status, and folder authorization.",
+    "After OAuth, test authenticated dashboard/navigation, odontogram persistence, anonymous image upload, AI SSE response, and logout.",
+    "Avoid persisting Google client secrets in plaintext and use a required environment-provided frontend callback URL rather than a hardcoded fallback."
+  ],
+  "critical_code_review_comments": [
+    "drive_callback stores client_secret in MongoDB; encrypt or avoid storing the secret at rest before production use.",
+    "SimplePage connectDrive has no catch/error state, so a failed authenticated Drive-connect request can leave the user without actionable feedback; the upload and AI flows similarly lack visible request-error handling."
+  ],
+  "updated_files": [
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/iteration_2.json"
+  ],
+  "success_rate": {
+    "backend": "100% (7/7 regression tests passed; unauthenticated Drive/storage/AI probes also returned expected 401)",
+    "frontend": "100% of executable unauthenticated/mobile checks passed; authenticated flows blocked"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": true,
+  "should_call_test_agent_after_fix": true,
+  "context_for_next_testing_agent": "Public /api/ returns 200; /api/auth/me, dashboard, patients, calendar, library, inventory, Drive connect/status, files, and AI stream reject unauthenticated requests with 401. Google sign-in redirects to accounts.google.com, invalid #session_id callback clears the hash, and 390px auth has no overflow. Use a configured Google test identity to finish authenticated OAuth/Drive and logout coverage.",
+  "rca of the issue": "The prior current_user Header-sentinel regression is fixed in the live service: direct protected route calls now enter the intended no-token branch and return 401. Remaining coverage is environment-blocked rather than a reproduced application failure."
+}
