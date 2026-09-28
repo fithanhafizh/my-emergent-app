@@ -1,0 +1,71 @@
+{
+  "summary": "End-to-end testing of the extended Dental Coass tracker (odontogram FDI, kalender + supervisor + reminder, SOP/Safety/Journal library). 26/27 backend pytest cases pass and every Playwright UI flow completes. One functional backend bug found: the drug-safety engine fails to raise 'Alergi Penisilin' when a patient's `allergies` list contains only 'Penisilin' (rule keyword requires the literal phrase 'alergi penisilin'). This also breaks the review requirement that seeded 'Bagas Wijaya' should show BOTH Hipertensi and Alergi Penisilin alerts in the UI (only Hipertensi appears).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/safety/check (+ evaluate_safety)",
+        "issue": "Allergy list items are matched against the same keyword list as history, so a rule with keyword 'alergi penisilin' never fires when the request payload is {'allergies':['Penisilin']}. Same issue for 'alergi lateks' vs 'Lateks'. Reproduce: POST /api/safety/check {'history':['Hipertensi','Kehamilan'],'allergies':['Penisilin']} -> alerts only contain Hipertensi + Kehamilan (2), review expects >=3 including 'Alergi Penisilin'. Suggested fix in evaluate_safety: prefix each allergy with 'alergi ' before building the combined haystack, OR add keyword 'penisilin'/'lateks' to the respective rules.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "GET /api/drive/callback",
+        "issue": "Callback still stores Google credentials in Mongo; refresh_token is kept in plaintext. Consider encrypting at rest (carried over from iteration_2)."
+      },
+      {
+        "endpoint": "GET /api/reminders",
+        "issue": "Does not accept ?date/?done filters; not required by review but useful for future dashboards."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Patients / SafetyAlerts",
+        "issue": "For seeded patient 'Bagas Wijaya' only the Hipertensi alert renders. The 'Alergi Penisilin' card never appears because of the backend safety-engine bug above. UI itself is correct.",
+        "selector": "[data-testid=\"safety-alerts\"]",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Mobile 390x844 - Patients list",
+        "issues": ["When the sidebar is opened via the hamburger it overlays the list; there is no dim/backdrop and tapping outside does not close it. The X close button works but a backdrop click would be a nicer UX."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_dental_coass.py",
+    "/app/backend/tests/test_public_and_auth_gates.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Fix evaluate_safety() so an entry in the `allergies` list matches the allergy rules. Simplest patch: build the haystack from history + ['alergi ' + a for a in allergies], then re-test POST /api/safety/check and confirm the seeded Bagas Wijaya profile shows two safety cards.",
+    "Optionally add a backdrop/close-on-outside-click for the mobile sidebar."
+  ],
+  "critical_code_review_comments": [
+    "evaluate_safety collapses history and allergies into one string, so allergy-specific keywords ('alergi penisilin', 'alergi lateks') never trigger for canonical inputs — needs a small refactor.",
+    "server.py is now 714 lines and mixes auth, patients, calendar, supervisors, sops, journals, safety, drive, files, AI, inventory, expenses. Consider splitting into routers (routes/patients.py, routes/library.py, routes/drive.py) — file-size guideline (>700 lines) already breached.",
+    "drive_callback still persists refresh_token/access_token in plaintext; encrypt or move to a secrets vault before production.",
+    "Odontogram/MediaComparer/AddPatientDialog/SafetyAlerts are all defined inside Patients.jsx (316 lines) — extract into their own files for maintainability.",
+    "CalendarPage.load closes over `cursor` via `ym(cursor)` string in dep-array — works but is fragile; prefer `[year, month]`."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_dental_coass.py",
+    "/app/memory/test_credentials.md (regenerated session_token used only in tests)",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/iteration_3.json"
+  ],
+  "success_rate": {
+    "backend": "96% (26/27 pytest cases passed; only test_safety_check failed due to the safety engine bug)",
+    "frontend": "100% of executed Playwright flows passed (dashboard, patients+odontogram persistence, add patient, calendar month nav + event creation, supervisor + WA wa.me link, reminder CRUD, SOP/Safety/Journal library tabs incl. add SOP and journal, mobile hamburger + navigation)"
+  },
+  "test_credentials": "session_token=test_session_a007d529bd5c41d5b0b715236d6a9d1e for user test.koas@dental-tracker.dev (30-day validity). Regenerate snippet in /app/memory/test_credentials.md still works.",
+  "seed_data_creation": "Prior iteration's test data cleared before the run. Server auto-seeded 4 patients (incl. Bagas Wijaya with Hipertensi + Penisilin allergy), 3 supervisors, 4 SOPs, 2 journals for the test user; verified idempotent seeding.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend suite lives at /app/backend/tests/test_dental_coass.py and requires REACT_APP_BACKEND_URL exported before pytest. All CRUD, safety rules, calendar, supervisors, sops, journals, reminders, AI SSE, and drive status/connect pass. Only failing test: test_safety_check (expects 'Alergi Penisilin' alert). After main agent fixes evaluate_safety, rerun that single test and re-run the Playwright safety-alerts assertion for Bagas Wijaya. Everything else is regression-clean.",
+  "rca of the issue": "In /app/backend/server.py :: evaluate_safety, history and allergies are concatenated into a single lower-cased string, then each rule is matched against that string with rule['keyword']. Allergy rules use canonical phrasings like 'alergi penisilin' / 'alergi lateks', but the incoming API payload (and the seeded patient) stores only the substance ('Penisilin', 'Lateks'). Because 'alergi penisilin' is never a substring of 'penisilin', those critical alerts are silently dropped. Fix: when composing the haystack, prepend 'alergi ' to each allergy item, e.g. combined = ' '.join([h.lower() for h in history] + ['alergi ' + a.lower() for a in allergies])."
+}

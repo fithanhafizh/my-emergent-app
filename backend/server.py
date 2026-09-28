@@ -444,7 +444,10 @@ SAFETY_RULES = [
 ]
 
 def evaluate_safety(history: List[str], allergies: List[str]) -> List[dict]:
-    combined = " ".join([h.lower() for h in (history or [])] + [a.lower() for a in (allergies or [])])
+    combined = " ".join(
+        [h.lower() for h in (history or [])] +
+        [f"alergi {a.lower()}" for a in (allergies or [])]
+    )
     alerts = []
     for rule in SAFETY_RULES:
         if any(k in combined for k in rule["keyword"]):

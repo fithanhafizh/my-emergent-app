@@ -1,42 +1,47 @@
 # Dental Coass Master Dashboard & Clinical Tracker
 
 ## Original problem statement
-Build a full-stack web application for dental clinical students (koas) with requirement tracking, patient logbook and interactive odontogram, clinical media comparison, Gemini AI assistant, calendar/reminders/supervisor log, treatment timeline and form/export utilities, SOP and drug-safety references, inventory and expense tracking, plus Google Drive OAuth 2.0 for secure media/PDF backup.
+Full-stack web app "Dental Coass Master Dashboard & Clinical Tracker" untuk mahasiswa klinik (koas) kedokteran gigi. Fitur inti: Dashboard & Requirement Tracker per departemen (8 dept), Logbook + Odontogram interaktif FDI, Media comparer (before/after + xray pre/post), WhatsApp direct button, Gemini AI (Case discussion, SOAP note, Treatment plan), Kalender + Supervisor Log + Reminder, Form generator + Export PDF/Excel, SOP library + Drug safety alerts + Journal bookmarks, Inventory (Dental Kit) + Expense tracker, Google Drive OAuth 2.0.
 
 ## Product decisions
-- Audience: Indonesian dental clinical students who need a fast, calm workspace during clinic sessions.
-- Architecture: React frontend, FastAPI backend, MongoDB metadata and records.
-- Auth: Emergent-managed Google OAuth with a server-side session exchange and httpOnly cookie.
-- AI: Gemini Flash for chat/SOAP and Gemini Pro for treatment-plan analysis through Emergent managed LLM access; responses stream over SSE.
-- Storage: Emergent object storage for private media, with MongoDB file metadata and soft-delete semantics.
-- Drive: Google Drive OAuth 2.0 using `drive.file`; each connected user gets or reuses a `Dental Coass Tracker` folder.
-- Privacy: demo patients are anonymous; APIs require the authenticated user; no real patient data should be used during testing.
+- Bahasa: Indonesian.
+- Auth: Emergent-managed Google Sign-in + httpOnly session cookie.
+- AI: Gemini 3 Flash (chat/SOAP) + Gemini 3.1 Pro (treatment plan) via Emergent LLM Key.
+- Storage: Emergent object storage untuk foto/PDF, Mongo untuk metadata.
+- Google Drive: OAuth `drive.file` scope, auto folder "Dental Coass Tracker".
+- Odontogram: FDI two-digit notation (permanent 11-48 + primary 51-85), multi-status per tooth.
 
-## Implemented (2026-09-28)
-- Branded responsive login screen and Emergent Google sign-in callback flow.
-- Dashboard with UKMP2DG countdown, overall progress, department tracker, agenda and patient navigation.
-- Patient logbook with anonymous demo cases, tags, reliability colors, WhatsApp action and interactive odontogram status toggling.
-- Private file upload/download/list APIs for images and PDFs with 15 MB validation and protected object-storage paths.
-- Gemini AI workspace with chat discussion, SOAP draft and treatment plan modes, streamed responses and clinical safety disclaimer.
-- Settings integration entry point and complete Google Drive OAuth connect/callback/status flow.
-- Automatic Drive folder creation and background sync of newly uploaded clinical files when Drive is connected.
-- Public API and unauthenticated route regression coverage.
+## Implemented (2026-09-28 · iteration 3)
+- Interactive **Odontogram FDI** (permanent + primary teeth, toggle sulung, popover multi-status: Sound, Caries, Restored, RCT, Missing, Crown, Bridge, Implant, Fractured, Sealant, Extraction, Impacted). Persist ke Mongo per pasien.
+- Full **Patient CRUD** dengan medical history, allergies, notes editor + inline tag add/remove.
+- **Drug safety engine**: 11 aturan (Hipertensi, Kehamilan, DM, Alergi Penisilin/Lateks, Asma, Antikoagulan, Penyakit Jantung, Epilepsi, Ginjal, Bifosfonat) — auto-alert di profil pasien; endpoint `/api/safety/check` & `/api/safety/rules`.
+- **Kalender** interaktif month grid + tambah/hapus event + toggle done; **Supervisor Log** dengan WA link; **Reminder** to-do CRUD.
+- **Library**: SOP (seeded 4 default, CRUD dengan filter kategori & search) + Journal Bookmarks (seeded 2, CRUD) + Drug Safety reference view.
+- **Media comparer**: 4 slot (Before / After / X-ray Pre / X-ray Post) upload ke object storage + auto-sync ke Google Drive.
+- **WhatsApp** wa.me link dengan pesan template.
+- **Inventory** & **Expense** tracker CRUD.
+- Dental AI (Gemini) SSE stream — Chat / SOAP / Treatment plan.
+- Dashboard countdown UKMP2DG + progress overall + agenda hari ini.
+- Semua endpoint auth-gated dengan cookie httpOnly.
 
-## Remaining backlog
+## Personas
+- Koas kedokteran gigi Indonesia yang butuh tracker requirement, logbook pasien, dan draft SOAP/treatment sebelum bimbingan.
+
+## Backlog
 ### P0
-- Complete a real Google OAuth callback with a configured test Google account.
-- Add authenticated end-to-end tests for dashboard, odontogram persistence, AI streaming, object storage upload and Drive sync.
-
+- Real Google OAuth callback test dengan akun test Google.
+- Form Generator (Consent form + Post-op instruction PDF) + Export rekap requirement PDF/Excel.
 ### P1
-- Replace the compact calendar/library/inventory screens with CRUD views and persist reminders, supervisor notes, stock and expenses.
-- Add patient timeline, consent/post-op templates and PDF/Excel export.
-- Add contraindication rule engine and SOP/journal CRUD.
-
+- Timeline/tahap tindakan per kunjungan di profil pasien.
+- Modul catatan revisi/bimbingan per supervisor per pasien.
+- Radiograph annotation & side-by-side overlay slider.
 ### P2
-- Add role-based supervisor access, audit log, file retention controls and encrypted credential storage at rest.
-- Add richer before/after media labeling and radiograph comparison annotations.
+- Role-based supervisor dashboard.
+- Encrypt Drive refresh_token at rest.
+- Split server.py into router modules (patients.py, library.py, drive.py).
+- Extract Odontogram/MediaComparer/AddPatientDialog/SafetyAlerts into own files.
 
 ## Next tasks
-1. Sign in with a Google test identity and connect Drive from Settings.
-2. Upload an anonymous image and confirm it appears in the `Dental Coass Tracker` Drive folder.
-3. Expand the remaining feature pages into persisted CRUD flows.
+1. Form generator (consent + post-op) → PDF export.
+2. Export rekap requirement PDF/Excel.
+3. Timeline tindakan per kunjungan.
