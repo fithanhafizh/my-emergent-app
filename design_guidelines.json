@@ -1,0 +1,45 @@
+{
+  "app_name": "Dental Coass Master Dashboard & Clinical Tracker",
+  "app_type": "hybrid_fullstack",
+  "archetype": "ORGANIC & EARTHY (Clinical Trust & Calm)",
+  "typography": {
+    "heading_font": "Plus Jakarta Sans, sans-serif",
+    "body_font": "Inter, sans-serif",
+    "mono_font": "JetBrains Mono, monospace",
+    "hierarchy_rules": {
+      "h1": "text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-900",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight text-slate-800",
+      "h3": "text-xl sm:text-2xl font-semibold text-slate-800",
+      "h4": "text-lg font-medium text-slate-700",
+      "body": "text-base text-slate-600 leading-relaxed",
+      "small": "text-sm text-slate-500"
+    }
+  },
+  "colors": {
+    "primary": "#0D9488",
+    "primary_hover": "#0F766E",
+    "secondary": "#0284C7",
+    "background": "#F8FAFC",
+    "surface": "#FFFFFF",
+    "border": "#E2E8F0",
+    "text_dark": "#0F172A",
+    "text_muted": "#64748B",
+    "success": "#10B981",
+    "warning": "#F59E0B",
+    "danger": "#EF4444"
+  },
+  "component_path": "/app/frontend/src/components/",
+  "instructions_to_main_agent": "Build a fully integrated React full-stack application (FastAPI backend + React frontend) for dental coass students. Implement all 7 requested modules: 1) Requirement Tracker with department progress and cross-linked patient lists, 2) Logbook with interactive Odontogram, Media Before/After Comparator, and WhatsApp action, 3) Gemini AI Assistant (Flash/Pro with Emergent LLM key) for Treatment Plan, SOAP Note Generator, and Dental Knowledge Q&A, 4) Calendar, Reminders & Supervisor Log with grading history, 5) Treatment Timeline, Consent/Post-Op Form Generator, and PDF/Excel export, 6) SOP Library, Drug Contraindication Alerts, and Journal Bookmarks, 7) Dental Kit Inventory & Expense Tracker, plus Google Drive OAuth 2.0 integration for syncing records and photos.",
+  "universal_guidelines": [
+    "Every interactive and key informational element MUST include a data-testid attribute.",
+    "NO universal transitions like transition: all.",
+    "Use generous spacing (p-6, p-8, gap-6) and clear container borders with internal padding.",
+    "Ensure all dropdowns, overlays, and headers have solid or backdrop-blur-xl opaque backgrounds, never fully transparent.",
+    "Responsive design across mobile and desktop views."
+  ],
+  "image_urls": {
+    "dental_clinic_chair": "https://images.unsplash.com/photo-1629909613654-28e377c37b09?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzd8MHwxfHNlYXJjaHwyfHxtb2Rlcm4lMjBkZW50YWwlMjBjbGluaWMlMjBpbnRlcmlvciUyMGRlbnRhbCUyMGVxdWlwbWVudHxlbnwwfHx8fDE3OTA1NTkxNjR8MA&ixlib=rb-4.1.0&q=85",
+    "dental_exam": "https://images.unsplash.com/photo-1667133295315-820bb6481730?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxkZW50aXN0JTIwcGF0aWVudCUyMGNsaW5pY2FsJTIwZXhhbWluYXRpb258ZW58MHx8fHwxNzkwNTU5MTcwfDA&ixlib=rb-4.1.0&q=85",
+    "dental_tool": "https://images.unsplash.com/photo-1606811971618-4486d14f3f99?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwxfHxkZW50aXN0JTIwcGF0aWVudCUyMGNsaW5pY2FsJTIwZXhhbWluYXRpb258ZW58MHx8fHwxNzkwNTU5MTcwfDA&ixlib=rb-4.1.0&q=85"
+  }
+}
